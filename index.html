@@ -31,9 +31,49 @@
         .charts-container { display: grid; grid-template-columns: 1fr; gap: 20px; }
         .chart-card { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); overflow-y: auto; }
         .chart-wrapper { position: relative; width: 100%; min-height: 400px; }
+
+        /* ===== Login ===== */
+        body.bloqueado > *:not(#loginOverlay) { display: none !important; }
+        #loginOverlay { position: fixed; inset: 0; background: linear-gradient(160deg, #1a365d, #2b6cb0); display: none; align-items: center; justify-content: center; padding: 20px; z-index: 9999; }
+        body.bloqueado #loginOverlay { display: flex; }
+        .login-box { background: #fff; width: 100%; max-width: 380px; padding: 32px; border-radius: 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.25); }
+        .login-box h2 { margin: 0 0 4px 0; color: #1a365d; font-size: 20px; }
+        .login-box p.sub { margin: 0 0 22px 0; color: #718096; font-size: 13px; }
+        .login-box label { display: block; }
+        .login-box input { width: 100%; box-sizing: border-box; padding: 10px; border: 1px solid #cbd5e0; border-radius: 6px; font-size: 14px; margin-bottom: 14px; }
+        .login-box button { width: 100%; padding: 11px; border: none; border-radius: 6px; font-weight: bold; font-size: 14px; cursor: pointer; }
+        .btn-login { background: #2b6cb0; color: #fff; }
+        .btn-login:hover { background: #2c5282; }
+        .btn-login:disabled { background: #a0aec0; cursor: wait; }
+        .login-msg { font-size: 13px; margin-top: 14px; padding: 10px; border-radius: 6px; display: none; }
+        .login-msg.error { display: block; background: #fff5f5; color: #c53030; border-left: 3px solid #c53030; }
+        .login-msg.ok { display: block; background: #f0fff4; color: #2f855a; border-left: 3px solid #2f855a; }
+        .user-bar { background: #fff; padding: 10px 18px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); margin-bottom: 18px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px; }
+        .user-bar .quien { font-size: 13px; color: #4a5568; }
+        .user-bar .quien strong { color: #1a365d; }
+        .btn-logout { background: #e2e8f0; color: #2d3748; border: none; padding: 7px 14px; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold; }
+        .btn-logout:hover { background: #cbd5e0; }
     </style>
 </head>
-<body>
+<body class="bloqueado">
+    <div id="loginOverlay">
+        <div class="login-box">
+            <h2>Comparativo Autos</h2>
+            <p class="sub">Ingresa con tu cuenta para continuar</p>
+            <label for="loginEmail">Correo</label>
+            <input type="email" id="loginEmail" autocomplete="username" placeholder="nombre@empresa.cl" />
+            <label for="loginPass">Contrase&ntilde;a</label>
+            <input type="password" id="loginPass" autocomplete="current-password" placeholder="********" />
+            <button class="btn-login" id="btnLogin">Entrar</button>
+            <div class="login-msg" id="loginMsg"></div>
+        </div>
+    </div>
+
+    <div class="user-bar" id="userBar" style="display:none;">
+        <span class="quien">Sesi&oacute;n de <strong id="userEmail"></strong><span id="userRol"></span></span>
+        <button class="btn-logout" id="btnLogout">Cerrar sesi&oacute;n</button>
+    </div>
+
 
     <h1>Comparativo Autos Fuera de Taller</h1>
 
@@ -418,6 +458,94 @@
                 }
             });
         }
+    </script>
+
+    <!-- ================= LOGIN (Supabase) ================= -->
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+    <script>
+        /* ---------------------------------------------------------------
+           PASO 1: reemplaza estos dos valores por los de TU proyecto.
+           Los encuentras en Supabase -> Project Settings -> API
+           La "anon key" es publica por diseno: la seguridad real la dan
+           las politicas RLS de las tablas, no ocultar esta clave.
+        ----------------------------------------------------------------*/
+        const SUPABASE_URL = "https://pstaiiwzzmeljcekrxeg.supabase.co";
+        const SUPABASE_ANON_KEY = "sb_publishable_kYYBi1L1FqmSawgKFqTaFw_AKbdZukL";
+
+        const sb = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+        const $overlay = document.getElementById("loginOverlay");
+        const $msg = document.getElementById("loginMsg");
+        const $btnLogin = document.getElementById("btnLogin");
+        const $userBar = document.getElementById("userBar");
+
+        function mostrarMsg(texto, tipo) {
+            $msg.textContent = texto;
+            $msg.className = "login-msg " + tipo;
+        }
+
+        function bloquear() {
+            document.body.classList.add("bloqueado");
+            $userBar.style.display = "none";
+        }
+
+        async function desbloquear(session) {
+            document.body.classList.remove("bloqueado");
+            $userBar.style.display = "flex";
+            document.getElementById("userEmail").textContent = session.user.email;
+
+            // Lee datos extra del usuario desde la tabla "perfiles" (opcional)
+            try {
+                const { data } = await sb
+                    .from("perfiles")
+                    .select("nombre, rol")
+                    .eq("id", session.user.id)
+                    .single();
+                if (data) {
+                    document.getElementById("userEmail").textContent = data.nombre || session.user.email;
+                    document.getElementById("userRol").textContent = data.rol ? " \u2014 " + data.rol : "";
+                }
+            } catch (e) {
+                /* si aun no creas la tabla "perfiles", simplemente se omite */
+            }
+        }
+
+        async function entrar() {
+            const email = document.getElementById("loginEmail").value.trim();
+            const password = document.getElementById("loginPass").value;
+            if (!email || !password) {
+                mostrarMsg("Escribe tu correo y contrasena.", "error");
+                return;
+            }
+            $btnLogin.disabled = true;
+            mostrarMsg("Verificando...", "ok");
+            const { error } = await sb.auth.signInWithPassword({ email, password });
+            $btnLogin.disabled = false;
+            if (error) {
+                mostrarMsg("Correo o contrasena incorrectos.", "error");
+            } else {
+                document.getElementById("loginPass").value = "";
+                $msg.className = "login-msg";
+            }
+        }
+
+        $btnLogin.addEventListener("click", entrar);
+        document.getElementById("loginPass").addEventListener("keydown", function (e) {
+            if (e.key === "Enter") entrar();
+        });
+        document.getElementById("btnLogout").addEventListener("click", async function () {
+            await sb.auth.signOut();
+        });
+
+        // Mantiene el estado: si ya habia sesion, entra directo al dashboard
+        sb.auth.onAuthStateChange(function (_evento, session) {
+            if (session) { desbloquear(session); } else { bloquear(); }
+        });
+
+        (async function () {
+            const { data } = await sb.auth.getSession();
+            if (data.session) { await desbloquear(data.session); } else { bloquear(); }
+        })();
     </script>
 </body>
 </html>
