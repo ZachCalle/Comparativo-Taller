@@ -1,0 +1,423 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Comparativo Autos Fuera de Taller</title>
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; margin: 20px; background-color: #f4f6f9; color: #333; }
+        h1 { color: #1a365d; text-align: center; margin-bottom: 20px; }
+        .upload-card { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); margin-bottom: 20px; }
+        .upload-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 15px; margin-bottom: 15px; }
+        .upload-group { display: flex; flex-direction: column; }
+        .upload-group label { font-weight: bold; font-size: 13px; margin-bottom: 5px; color: #4a5568; }
+        .upload-group input { padding: 6px; border: 1px solid #cbd5e0; border-radius: 4px; font-size: 13px; }
+        .btn-process { background: #2b6cb0; color: white; border: none; padding: 10px 20px; border-radius: 6px; font-weight: bold; cursor: pointer; font-size: 14px; width: 100%; }
+        .btn-process:hover { background: #2c5282; }
+        .alert-box { background: #fffaf0; border-left: 4px solid #dd6b20; color: #7b341e; padding: 12px 20px; border-radius: 6px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .toggle-btn { background: #dd6b20; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 13px; }
+        .filter-container { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; background: #fff; padding: 15px 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); margin-bottom: 20px; }
+        .filter-group { display: flex; flex-direction: column; }
+        label { font-weight: bold; margin-bottom: 6px; font-size: 13px; color: #4a5568; }
+        select { padding: 8px 12px; border-radius: 6px; border: 1px solid #cbd5e0; font-size: 13px; background-color: #fff; }
+        .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; margin-bottom: 20px; }
+        .card { background: #fff; padding: 18px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); text-align: center; }
+        .card h3 { margin: 0 0 8px 0; font-size: 12px; color: #718096; text-transform: uppercase; }
+        .card .value { font-size: 22px; font-weight: bold; color: #2b6cb0; }
+        .card .var { font-size: 14px; font-weight: bold; margin-top: 6px; }
+        .pos { color: #2f855a; } .neg { color: #c53030; }
+        .charts-container { display: grid; grid-template-columns: 1fr; gap: 20px; }
+        .chart-card { background: #fff; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.08); overflow-y: auto; }
+        .chart-wrapper { position: relative; width: 100%; min-height: 400px; }
+    </style>
+</head>
+<body>
+
+    <h1>Comparativo Autos Fuera de Taller</h1>
+
+    <div class="upload-card">
+        <div class="upload-grid">
+            <div class="upload-group">
+                <label>Planilla 31-05-2026 (.xlsx):</label>
+                <input type="file" id="file1" accept=".xlsx" />
+            </div>
+            <div class="upload-group">
+                <label>Planilla Actualizada (.xlsx):</label>
+                <input type="file" id="file2" accept=".xlsx" />
+            </div>
+            <div class="upload-group">
+                <label>Planilla Cruce / Homologación (.xlsx):</label>
+                <input type="file" id="fileCruce" accept=".xlsx" />
+            </div>
+        </div>
+        <button class="btn-process" onclick="procesarArchivos()">Procesar y Aplicar Homologación</button>
+    </div>
+
+    <div id="dashboardArea" style="display: none;">
+        <div class="alert-box" id="alertBoxContainer" style="display: none;">
+            <span id="alertBoxText"><strong>Control de OT #2787 (Outlier):</strong> Se detectó la OT con un valor anómalo.</span>
+            <button class="toggle-btn" id="btnOutlier" onclick="toggleOutlier()">Excluir OT #2787 (Ajustado)</button>
+        </div>
+
+        <div class="filter-container">
+            <div class="filter-group">
+                <label for="metricFilter" style="color: #2b6cb0;">Métrica del Gráfico:</label>
+                <select id="metricFilter" onchange="updateDashboard()">
+                    <option value="OT">Cantidad de OTs</option>
+                    <option value="VALOR">Montos ($)</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="sucursalFilter">Sucursal:</label>
+                <select id="sucursalFilter" onchange="updateDashboard()">
+                    <option value="ALL">-- Todas las Sucursales --</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="tipoCargoFilter">Tipo Cargo Servicio:</label>
+                <select id="tipoCargoFilter" onchange="updateDashboard()">
+                    <option value="ALL">-- Todos los Tipos Homologados --</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="seccionFilter">OT Sección:</label>
+                <select id="seccionFilter" onchange="updateDashboard()">
+                    <option value="ALL">-- Todas las Secciones --</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="marcaFilter">Marca:</label>
+                <select id="marcaFilter" onchange="updateDashboard()">
+                    <option value="ALL">-- Todas las Marcas --</option>
+                </select>
+            </div>
+            <div class="filter-group">
+                <label for="anoFilter">Año (FechaOT):</label>
+                <select id="anoFilter" onchange="updateDashboard()">
+                    <option value="ALL">-- Todos los Años --</option>
+                </select>
+            </div>
+        </div>
+
+        <div class="metrics-grid">
+            <div class="card">
+                <h3>Total OTs (31-05-2026)</h3>
+                <div class="value" id="ot_31">0</div>
+            </div>
+            <div class="card">
+                <h3>Total OTs (Actualizada)</h3>
+                <div class="value" id="ot_act">0</div>
+                <div class="var" id="ot_var">0%</div>
+            </div>
+            <div class="card">
+                <h3>Valor Total (31-05-2026)</h3>
+                <div class="value" id="val_31">$0</div>
+            </div>
+            <div class="card">
+                <h3>Valor Total (Actualizada)</h3>
+                <div class="value" id="val_act">$0</div>
+                <div class="var" id="val_var">0%</div>
+            </div>
+        </div>
+
+        <div class="charts-container">
+            <div class="chart-card">
+                <div class="chart-wrapper" id="chartWrapper">
+                    <canvas id="sucursalesChart"></canvas>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let rawData1 = [], rawData2 = [];
+        let excludeOutlier = true;
+        let sucursalesChart = null;
+        let outlierEncontrado = false;
+        let montoOutlierDetectado = 0;
+
+        async function readExcel(fileInput) {
+            const file = fileInput.files[0];
+            if (!file) return null;
+            const data = await file.arrayBuffer();
+            const workbook = XLSX.read(data, { cellDates: true });
+            const firstSheet = workbook.SheetNames[0];
+            return XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet]);
+        }
+
+        async function procesarArchivos() {
+            const f1 = document.getElementById('file1');
+            const f2 = document.getElementById('file2');
+            const fc = document.getElementById('fileCruce');
+
+            if (!f1.files[0] || !f2.files[0] || !fc.files[0]) {
+                alert('Por favor selecciona los 3 archivos .xlsx antes de procesar.');
+                return;
+            }
+
+            const data1 = await readExcel(f1);
+            const data2 = await readExcel(f2);
+            const dataCruce = await readExcel(fc);
+
+            const mapaHomologacion = {};
+            dataCruce.forEach(r => {
+                const keys = Object.keys(r);
+                if (keys.length >= 2) {
+                    const col1 = String(r[keys[0]] || '').trim();
+                    const col2 = String(r[keys[1]] || '').trim();
+                    if (col1) mapaHomologacion[col1] = col2 || col1;
+                }
+            });
+
+            const getVal = (row, fieldNames) => {
+                for (let key of Object.keys(row)) {
+                    const normKey = key.trim().toLowerCase();
+                    if (fieldNames.some(f => normKey === f.toLowerCase())) {
+                        return row[key];
+                    }
+                }
+                return null;
+            };
+
+            const extractYearFromFechaOT = (val) => {
+                if (!val) return 'SIN AÑO';
+                if (val instanceof Date) {
+                    const year = val.getFullYear();
+                    return (!isNaN(year) && year > 1900 && year < 2100) ? String(year) : 'SIN AÑO';
+                }
+                const strVal = String(val).trim();
+                const yearMatch = strVal.match(/\b(19\d\d|20\d\d)\b/);
+                if (yearMatch) return yearMatch[1];
+
+                const parsedDate = new Date(strVal);
+                if (!isNaN(parsedDate.getTime())) {
+                    const y = parsedDate.getFullYear();
+                    if (y > 1900 && y < 2100) return String(y);
+                }
+                return 'SIN AÑO';
+            };
+
+            const transformarData = (data) => {
+                return data
+                    .filter(r => String(getVal(r, ['CRUCE']) || '').trim().toLowerCase() === 'vh fuera de taller')
+                    .map(r => {
+                        const originalTipo = String(getVal(r, ['Tipo Cargo Servicio']) || 'SIN TIPO').trim();
+                        const tipoHomologado = mapaHomologacion[originalTipo] || originalTipo;
+                        const rawFechaOT = getVal(r, ['FechaOT', 'Fecha OT', 'FECHA OT', 'Fecha_OT', 'Fecha']);
+                        const año = extractYearFromFechaOT(rawFechaOT);
+                        const rawMarca = getVal(r, ['Marca', 'MARCA']);
+                        const rawSeccion = getVal(r, ['OTSeccion', 'OT Seccion', 'OT_Seccion', 'Seccion', 'SECCION', 'OTSECCION']);
+
+                        return {
+                            sucursal: String(getVal(r, ['Sucursal']) || 'SIN SUCURSAL').trim(),
+                            tipo_cargo: tipoHomologado,
+                            seccion: rawSeccion ? String(rawSeccion).trim().toUpperCase() : 'SIN SECCION',
+                            marca: rawMarca ? String(rawMarca).trim().toUpperCase() : 'SIN MARCA',
+                            ano: año,
+                            ot: Number(getVal(r, ['OT']) || 0),
+                            valor_total: Number(getVal(r, ['Valor Total']) || 0)
+                        };
+                    });
+            };
+
+            rawData1 = transformarData(data1);
+            rawData2 = transformarData(data2);
+
+            outlierEncontrado = false;
+            montoOutlierDetectado = 0;
+
+            [...rawData1, ...rawData2].forEach(item => {
+                if (item.ot === 2787 && item.valor_total > 1e10) {
+                    outlierEncontrado = true;
+                    montoOutlierDetectado = item.valor_total;
+                }
+            });
+
+            const alertContainer = document.getElementById('alertBoxContainer');
+            if (outlierEncontrado) {
+                document.getElementById('alertBoxText').innerHTML = `<strong>Control de OT #2787 (Outlier):</strong> Excluye o incluye la OT con el valor anómalo de $${Math.round(montoOutlierDetectado).toLocaleString('es-CL')}.`;
+                alertContainer.style.display = 'flex';
+                excludeOutlier = true;
+            } else {
+                alertContainer.style.display = 'none';
+                excludeOutlier = false;
+            }
+
+            document.getElementById('dashboardArea').style.display = 'block';
+            initFilters();
+            updateDashboard();
+        }
+
+        function toggleOutlier() {
+            excludeOutlier = !excludeOutlier;
+            document.getElementById('btnOutlier').innerText = excludeOutlier ? "Excluir OT #2787 (Ajustado)" : "Incluir OT #2787 (Bruto)";
+            updateDashboard();
+        }
+
+        function populateSelect(id, values, defaultLabel) {
+            const select = document.getElementById(id);
+            select.innerHTML = `<option value="ALL">${defaultLabel}</option>`;
+            Array.from(values).sort().forEach(val => {
+                const opt = document.createElement('option');
+                opt.value = val;
+                opt.textContent = val;
+                select.appendChild(opt);
+            });
+        }
+
+        function initFilters() {
+            const sucursales = new Set();
+            const tipos = new Set();
+            const secciones = new Set();
+            const marcas = new Set();
+            const anos = new Set();
+
+            [...rawData1, ...rawData2].forEach(item => {
+                if (item.sucursal) sucursales.add(item.sucursal);
+                if (item.tipo_cargo) tipos.add(item.tipo_cargo);
+                if (item.seccion) secciones.add(item.seccion);
+                if (item.marca) marcas.add(item.marca);
+                if (item.ano) anos.add(item.ano);
+            });
+
+            populateSelect('sucursalFilter', sucursales, '-- Todas las Sucursales --');
+            populateSelect('tipoCargoFilter', tipos, '-- Todos los Tipos Homologados --');
+            populateSelect('seccionFilter', secciones, '-- Todas las Secciones --');
+            populateSelect('marcaFilter', marcas, '-- Todas las Marcas --');
+            populateSelect('anoFilter', anos, '-- Todos los Años --');
+        }
+
+        function filterData(data) {
+            const suc = document.getElementById('sucursalFilter').value;
+            const tc = document.getElementById('tipoCargoFilter').value;
+            const sec = document.getElementById('seccionFilter').value;
+            const marca = document.getElementById('marcaFilter').value;
+            const ano = document.getElementById('anoFilter').value;
+
+            return data.filter(item => {
+                if (excludeOutlier && outlierEncontrado && item.ot === 2787 && item.valor_total > 1e10) return false;
+                
+                const matchSuc = (suc === 'ALL' || item.sucursal === suc);
+                const matchTc = (tc === 'ALL' || item.tipo_cargo === tc);
+                const matchSec = (sec === 'ALL' || item.seccion === sec);
+                const matchMarca = (marca === 'ALL' || item.marca === marca);
+                const matchAno = (ano === 'ALL' || item.ano === ano);
+
+                return matchSuc && matchTc && matchSec && matchMarca && matchAno;
+            });
+        }
+
+        function updateDashboard() {
+            const f1 = filterData(rawData1), f2 = filterData(rawData2);
+            const c1 = f1.length, c2 = f2.length;
+            const otVar = c1 === 0 ? 0 : (((c2 - c1) / c1) * 100);
+
+            const v1 = f1.reduce((a, b) => a + (b.valor_total || 0), 0);
+            const v2 = f2.reduce((a, b) => a + (b.valor_total || 0), 0);
+            const valVar = v1 === 0 ? 0 : (((v2 - v1) / v1) * 100);
+
+            document.getElementById('ot_31').innerText = c1.toLocaleString('es-CL');
+            document.getElementById('ot_act').innerText = c2.toLocaleString('es-CL');
+            document.getElementById('ot_var').innerText = (otVar >= 0 ? '+' : '') + otVar.toFixed(2) + '%';
+            document.getElementById('ot_var').className = 'var ' + (otVar >= 0 ? 'pos' : 'neg');
+
+            document.getElementById('val_31').innerText = '$' + Math.round(v1).toLocaleString('es-CL');
+            document.getElementById('val_act').innerText = '$' + Math.round(v2).toLocaleString('es-CL');
+            document.getElementById('val_var').innerText = (valVar >= 0 ? '+' : '') + valVar.toFixed(2) + '%';
+            document.getElementById('val_var').className = 'var ' + (valVar >= 0 ? 'pos' : 'neg');
+
+            renderSucursalesChart(f1, f2);
+        }
+
+        function renderSucursalesChart(f1, f2) {
+            const metric = document.getElementById('metricFilter').value;
+            const isOT = metric === 'OT';
+
+            const sucursalesSet = new Set([...f1.map(i => i.sucursal), ...f2.map(i => i.sucursal)]);
+            const sucursales = Array.from(sucursalesSet).sort();
+
+            const data31 = sucursales.map(s => {
+                const items = f1.filter(i => i.sucursal === s);
+                return isOT ? items.length : items.reduce((a, b) => a + (b.valor_total || 0), 0);
+            });
+
+            const dataAct = sucursales.map(s => {
+                const items = f2.filter(i => i.sucursal === s);
+                return isOT ? items.length : items.reduce((a, b) => a + (b.valor_total || 0), 0);
+            });
+
+            const minHeight = Math.max(450, sucursales.length * 45);
+            document.getElementById('chartWrapper').style.height = minHeight + 'px';
+
+            if (sucursalesChart) sucursalesChart.destroy();
+
+            const ctx = document.getElementById('sucursalesChart').getContext('2d');
+            sucursalesChart = new Chart(ctx, {
+                type: 'bar',
+                data: {
+                    labels: sucursales,
+                    datasets: [
+                        {
+                            label: '31-05-2026',
+                            data: data31,
+                            backgroundColor: isOT ? '#3182ce' : '#d69e2e',
+                            categoryPercentage: 0.8,
+                            barPercentage: 0.9,
+                            maxBarThickness: 32
+                        },
+                        {
+                            label: 'Actualizada',
+                            data: dataAct,
+                            backgroundColor: isOT ? '#319795' : '#dd6b20',
+                            categoryPercentage: 0.8,
+                            barPercentage: 0.9,
+                            maxBarThickness: 32
+                        }
+                    ]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        title: {
+                            display: true,
+                            text: `Comparativo de Sucursales (${isOT ? 'Cantidad de OTs' : 'Montos ($)'})`,
+                            font: { size: 16 }
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: (ctx) => {
+                                    const val = ctx.raw;
+                                    return isOT 
+                                        ? `${ctx.dataset.label}: ${val.toLocaleString('es-CL')} OTs`
+                                        : `${ctx.dataset.label}: $${Math.round(val).toLocaleString('es-CL')}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: {
+                            ticks: {
+                                callback: (value) => isOT 
+                                    ? value.toLocaleString('es-CL') 
+                                    : '$' + (value >= 1e6 ? (value/1e6).toFixed(1) + 'M' : value.toLocaleString('es-CL'))
+                            }
+                        },
+                        y: {
+                            ticks: {
+                                font: {
+                                    size: 12,
+                                    weight: 'bold'
+                                }
+                            }
+                        }
+                    }
+                }
+            });
+        }
+    </script>
+</body>
+</html>
